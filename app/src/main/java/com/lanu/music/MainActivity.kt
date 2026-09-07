@@ -27,6 +27,7 @@ import androidx.media3.session.SessionToken
 
 class MainActivity : AppCompatActivity() {
     private var controller: MediaController? = null
+    private var playerConnectionInProgress = false
     private val tracks = mutableListOf<MusicTrack>()
     private val visibleTracks = mutableListOf<MusicTrack>()
     private lateinit var adapter: ArrayAdapter<String>
@@ -235,8 +236,11 @@ class MainActivity : AppCompatActivity() {
     private fun playTrack(position: Int) {
         if (position !in visibleTracks.indices) return
         val selected = visibleTracks[position]
+        val queueIndex = tracks.indexOfFirst { it.id == selected.id }
+        if (queueIndex < 0) return
+
         connectPlayer {
-            val queue = visibleTracks.map { track ->
+            val queue = tracks.map { track ->
                 MediaItem.Builder()
                     .setUri(track.uri)
                     .setMediaMetadata(
@@ -248,7 +252,7 @@ class MainActivity : AppCompatActivity() {
                     )
                     .build()
             }
-            controller?.setMediaItems(queue, position, 0L)
+            controller?.setMediaItems(queue, queueIndex, 0L)
             controller?.prepare()
             controller?.play()
             status.text = "Çalıyor: ${selected.title} — ${selected.artist}"
@@ -263,9 +267,12 @@ class MainActivity : AppCompatActivity() {
             updateNowPlaying()
             return
         }
+        if (playerConnectionInProgress) return
+        playerConnectionInProgress = true
         val token = SessionToken(this, ComponentName(this, PlaybackService::class.java))
         val future = MediaController.Builder(this, token).buildAsync()
         future.addListener({
+            playerConnectionInProgress = false
             runCatching { future.get() }.onSuccess { mediaController ->
                 controller = mediaController
                 controller?.addListener(playerListener)
