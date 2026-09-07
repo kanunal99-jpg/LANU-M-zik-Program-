@@ -10,40 +10,52 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 
 class PlaybackService : MediaSessionService() {
-    private lateinit var player: ExoPlayer
-    private lateinit var mediaSession: MediaSession
+    private var player: ExoPlayer? = null
+    private var mediaSession: MediaSession? = null
 
     override fun onCreate() {
         super.onCreate()
-        player = ExoPlayer.Builder(this).build().apply {
-            setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(C.USAGE_MEDIA)
-                    .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
-                    .build(),
-                true
-            )
-            setHandleAudioBecomingNoisy(true)
-            repeatMode = Player.REPEAT_MODE_OFF
-        }
+        runCatching {
+            val createdPlayer = ExoPlayer.Builder(this).build().apply {
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(C.USAGE_MEDIA)
+                        .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                        .build(),
+                    true
+                )
+                setHandleAudioBecomingNoisy(true)
+                repeatMode = Player.REPEAT_MODE_OFF
+            }
 
-        val sessionIntent = Intent(this, MainActivity::class.java)
-        val pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            sessionIntent,
-            PendingIntent.FLAG_IMMUTABLE
-        )
-        mediaSession = MediaSession.Builder(this, player)
-            .setSessionActivity(pendingIntent)
-            .build()
+            val sessionIntent = Intent(this, MainActivity::class.java)
+            val pendingIntent = PendingIntent.getActivity(
+                this,
+                0,
+                sessionIntent,
+                PendingIntent.FLAG_IMMUTABLE
+            )
+            val createdSession = MediaSession.Builder(this, createdPlayer)
+                .setSessionActivity(pendingIntent)
+                .build()
+
+            player = createdPlayer
+            mediaSession = createdSession
+        }.onFailure {
+            player?.release()
+            player = null
+            mediaSession = null
+            stopSelf()
+        }
     }
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession = mediaSession
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
 
     override fun onDestroy() {
-        mediaSession.release()
-        player.release()
+        mediaSession?.release()
+        mediaSession = null
+        player?.release()
+        player = null
         super.onDestroy()
     }
 }
