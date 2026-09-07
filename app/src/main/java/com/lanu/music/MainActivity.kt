@@ -53,7 +53,10 @@ class MainActivity : AppCompatActivity() {
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (!granted) status.text = "Bildirim izni verilmedi; kilit ekranı medya bildirimi görünmeyebilir"
+        if (!granted) {
+            status.text = "Bildirim izni verilmedi; medya bildirimi görünmeyebilir"
+        }
+        ensureAudioPermission()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -127,7 +130,6 @@ class MainActivity : AppCompatActivity() {
 
         setContentView(root)
         ensureNotificationPermission()
-        ensureAudioPermission()
     }
 
     private fun ensureNotificationPermission() {
@@ -135,6 +137,8 @@ class MainActivity : AppCompatActivity() {
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            ensureAudioPermission()
         }
     }
 
