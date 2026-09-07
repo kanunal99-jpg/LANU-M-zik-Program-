@@ -3,6 +3,7 @@ package com.lanu.music
 import android.Manifest
 import android.content.ComponentName
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
@@ -19,6 +20,7 @@ import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.SeekBar
@@ -31,6 +33,8 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 
 class MainActivity : AppCompatActivity() {
     private var controller: MediaController? = null
@@ -42,6 +46,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var search: EditText
     private lateinit var nowPlayingTitle: TextView
     private lateinit var nowPlayingArtist: TextView
+    private lateinit var nowPlayingCover: ImageView
     private lateinit var positionText: TextView
     private lateinit var durationText: TextView
     private lateinit var progress: SeekBar
@@ -54,6 +59,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var emptyState: TextView
     private var userSeeking = false
     private val progressHandler = Handler(Looper.getMainLooper())
+    private val artworkExecutor = Executors.newSingleThreadExecutor()
+    private val artworkGeneration = AtomicInteger(0)
     private val progressUpdater = object : Runnable {
         override fun run() {
             updateProgress()
@@ -175,14 +182,14 @@ class MainActivity : AppCompatActivity() {
             background = rounded(surface, 20)
         }
         val nowTop = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        val cover = TextView(this).apply {
-            text = "♪"
-            textSize = 36f
-            gravity = Gravity.CENTER
-            setTextColor(white)
+        nowPlayingCover = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            setImageResource(android.R.drawable.ic_media_play)
+            contentDescription = "Albüm kapağı"
             background = rounded(primary, 16)
+            clipToOutline = true
         }
-        nowTop.addView(cover, LinearLayout.LayoutParams(dp(72), dp(72)))
+        nowTop.addView(nowPlayingCover, LinearLayout.LayoutParams(dp(72), dp(72)))
         val titleCol = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(14), 0, 0, 0)
@@ -435,7 +442,37 @@ class MainActivity : AppCompatActivity() {
         playPause.text = if (c.isPlaying) "Ⅱ" else "▶"
         previous.isEnabled = c.hasPreviousMediaItem()
         next.isEnabled = c.hasNextMediaItem()
+        updateAlbumArtwork(item)
         updatePlayerModeLabels()
+    }
+
+    private fun updateAlbumArtwork(item: MediaItem?) {
+        val generation = artworkGeneration.incrementAndGet()
+        nowPlayingCover.setImageResource(android.R.drawable.ic_media_play)
+        val mediaId = item?.mediaId ?: return
+        val track = tracks.firstOrNull { it.uri == mediaId || it.id.toString() == mediaId.substringAfterLast('/') } ?: tracks.firstOrNull {
+            it.title == item.mediaMetadata.title?.toString() && it.artist == item.mediaMetadata.artist?.toString()
+        } ?: return
+        val artworkUri = track.albumArtUri
+        if (artworkUri != null) {
+            artworkExecutor.execute {
+                val bitmap = AlbumArtResolver.load(this@MainActivity, artworkUri)
+                applyArtwork(generation, bitmap)
+            }
+            return
+        }
+        artworkExecutor.execute {
+            val bitmap = AlbumArtResolver.load(this@MainActivity, track.uri)
+            applyArtwork(generation, bitmap)
+        }
+    }
+
+    private fun applyArtwork(generation: Int, bitmap: Bitmap?) {
+        runOnUiThread {
+            if (generation != artworkGeneration.get()) return@runOnUiThread
+            if (bitmap != null) nowPlayingCover.setImageBitmap(bitmap)
+            else nowPlayingCover.setImageResource(android.R.drawable.ic_media_play)
+        }
     }
 
     private fun updateProgress() {
@@ -457,6 +494,8 @@ class MainActivity : AppCompatActivity() {
         controller?.removeListener(playerListener)
         controller?.release()
         controller = null
+        artworkGeneration.incrementAndGet()
+        artworkExecutor.shutdownNow()
         super.onDestroy()
     }
 }
