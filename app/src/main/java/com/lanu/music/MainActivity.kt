@@ -29,6 +29,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var adapter: ArrayAdapter<String>
     private lateinit var status: TextView
     private lateinit var search: EditText
+    private lateinit var playPause: Button
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -51,21 +52,17 @@ class MainActivity : AppCompatActivity() {
         })
 
         search = EditText(this).apply {
-            hint = "Şarkı, sanatçı veya albüm ara"
+            hint = "Şarkı, sanatçı veya albüm ara…"
             singleLine = true
         }
         root.addView(search)
 
-        status = TextView(this).apply {
-            text = "Müzik kitaplığı hazırlanıyor…"
-            textSize = 15f
-            setPadding(0, 12, 0, 12)
-        }
+        status = TextView(this).apply { text = "Müzik kitaplığı hazırlanıyor…"; textSize = 15f }
         root.addView(status)
 
         val controls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val connect = Button(this).apply { text = "Player" }
-        val playPause = Button(this).apply { text = "Oynat / Duraklat"; isEnabled = false }
+        playPause = Button(this).apply { text = "Oynat / Duraklat"; isEnabled = false }
         val refresh = Button(this).apply { text = "Yenile" }
         controls.addView(connect)
         controls.addView(playPause)
@@ -76,36 +73,17 @@ class MainActivity : AppCompatActivity() {
         val list = ListView(this).apply { adapter = this@MainActivity.adapter }
         root.addView(list, LinearLayout.LayoutParams(-1, 0, 1f))
 
-        connect.setOnClickListener { connectPlayer(playPause) }
-        refresh.setOnClickListener { loadDeviceMusic() }
+        connect.setOnClickListener { connectPlayer() }
         playPause.setOnClickListener {
             controller?.let { if (it.isPlaying) it.pause() else it.play() }
         }
+        refresh.setOnClickListener { loadDeviceMusic() }
         search.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = filterTracks(s?.toString().orEmpty())
             override fun afterTextChanged(s: Editable?) = Unit
         })
-        list.setOnItemClickListener { _, _, position, _ ->
-            val track = visibleTracks[position]
-            connectPlayer(playPause) {
-                controller?.setMediaItem(
-                    MediaItem.Builder()
-                        .setUri(track.uri)
-                        .setMediaMetadata(
-                            MediaMetadata.Builder()
-                                .setTitle(track.title)
-                                .setArtist(track.artist)
-                                .setAlbumTitle(track.album)
-                                .build()
-                        )
-                        .build()
-                )
-                controller?.prepare()
-                controller?.play()
-                status.text = "Çalıyor: ${track.title} — ${track.artist}"
-            }
-        }
+        list.setOnItemClickListener { _, _, position, _ -> playTrack(position) }
 
         setContentView(root)
         ensureAudioPermission()
@@ -133,10 +111,9 @@ class MainActivity : AppCompatActivity() {
             MediaStore.Audio.Media.ALBUM,
             MediaStore.Audio.Media.DURATION
         )
-        val collection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
         runCatching {
             contentResolver.query(
-                collection,
+                MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
                 projection,
                 "${MediaStore.Audio.Media.IS_MUSIC} != 0",
                 null,
@@ -159,32 +136,50 @@ class MainActivity : AppCompatActivity() {
                     )
                 }
             }
-        }.onFailure {
-            status.text = "Müzik kitaplığı okunamadı: ${it.message ?: "bilinmeyen hata"}"
-        }
+        }.onFailure { error -> status.text = "Kitaplık hatası: ${error.message ?: "bilinmeyen hata"}" }
         filterTracks(search.text?.toString().orEmpty())
-        if (tracks.isNotEmpty()) status.text = "${tracks.size} parça bulundu"
-        else if (status.text.toString().startsWith("Müzik kitaplığı")) status.text = "Cihazda müzik bulunamadı"
     }
 
     private fun filterTracks(query: String) {
-        val normalized = query.trim().lowercase()
+        val q = query.trim()
         visibleTracks.clear()
-        visibleTracks += tracks.filter {
-            normalized.isEmpty() ||
-                it.title.lowercase().contains(normalized) ||
-                it.artist.lowercase().contains(normalized) ||
-                it.album.lowercase().contains(normalized)
+        visibleTracks += if (q.isEmpty()) tracks else tracks.filter {
+            it.title.contains(q, true) || it.artist.contains(q, true) || it.album.contains(q, true)
         }
         adapter.clear()
         adapter.addAll(visibleTracks.map { "${it.title}\n${it.artist} • ${it.album}" })
         adapter.notifyDataSetChanged()
-        if (tracks.isNotEmpty() && normalized.isNotEmpty()) {
-            status.text = "${visibleTracks.size} sonuç • ${tracks.size} toplam parça"
+        status.text = when {
+            tracks.isEmpty() -> "Cihazda müzik bulunamadı"
+            q.isNotEmpty() -> "${visibleTracks.size} sonuç / ${tracks.size} parça"
+            else -> "${tracks.size} parça bulundu"
         }
     }
 
-    private fun connectPlayer(playPause: Button, afterConnected: (() -> Unit)? = null) {
+    private fun playTrack(position: Int) {
+        if (position !in visibleTracks.indices) return
+        val selected = visibleTracks[position]
+        connectPlayer {
+            val queue = visibleTracks.map { track ->
+                MediaItem.Builder()
+                    .setUri(track.uri)
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setTitle(track.title)
+                            .setArtist(track.artist)
+                            .setAlbumTitle(track.album)
+                            .build()
+                    )
+                    .build()
+            }
+            controller?.setMediaItems(queue, position, 0L)
+            controller?.prepare()
+            controller?.play()
+            status.text = "Çalıyor: ${selected.title} — ${selected.artist}"
+        }
+    }
+
+    private fun connectPlayer(afterConnected: (() -> Unit)? = null) {
         if (controller != null) {
             playPause.isEnabled = true
             afterConnected?.invoke()
