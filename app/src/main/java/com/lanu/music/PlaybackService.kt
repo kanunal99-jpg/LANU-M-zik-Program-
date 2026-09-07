@@ -4,6 +4,7 @@ import android.app.PendingIntent
 import android.content.Intent
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
@@ -22,6 +23,7 @@ class PlaybackService : MediaSessionService() {
                     .build(),
                 true
             )
+            repeatMode = Player.REPEAT_MODE_OFF
         }
 
         val sessionIntent = Intent(this, MainActivity::class.java)
