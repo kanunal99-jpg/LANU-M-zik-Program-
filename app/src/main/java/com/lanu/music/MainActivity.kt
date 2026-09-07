@@ -37,11 +37,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var nowPlayingArtist: TextView
     private lateinit var previous: Button
     private lateinit var next: Button
+    private lateinit var shuffle: Button
+    private lateinit var repeat: Button
 
     private val playerListener = object : Player.Listener {
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) = updateNowPlaying()
         override fun onIsPlayingChanged(isPlaying: Boolean) = updateNowPlaying()
         override fun onPlaybackStateChanged(playbackState: Int) = updateNowPlaying()
+        override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) = updatePlayerModeLabels()
+        override fun onRepeatModeChanged(repeatMode: Int) = updatePlayerModeLabels()
     }
 
     private val permissionLauncher = registerForActivityResult(
@@ -100,6 +104,13 @@ class MainActivity : AppCompatActivity() {
         playerControls.addView(next, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         root.addView(playerControls)
 
+        val modeControls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        shuffle = Button(this).apply { text = "Karıştır: Kapalı"; isEnabled = false }
+        repeat = Button(this).apply { text = "Tekrar: Kapalı"; isEnabled = false }
+        modeControls.addView(shuffle, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        modeControls.addView(repeat, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        root.addView(modeControls)
+
         status = TextView(this).apply { text = "Müzik kitaplığı hazırlanıyor…"; textSize = 15f }
         root.addView(status)
 
@@ -120,6 +131,18 @@ class MainActivity : AppCompatActivity() {
         }
         previous.setOnClickListener { controller?.seekToPreviousMediaItem() }
         next.setOnClickListener { controller?.seekToNextMediaItem() }
+        shuffle.setOnClickListener {
+            controller?.let { it.shuffleModeEnabled = !it.shuffleModeEnabled }
+        }
+        repeat.setOnClickListener {
+            controller?.let {
+                it.repeatMode = when (it.repeatMode) {
+                    Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+                    Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+                    else -> Player.REPEAT_MODE_OFF
+                }
+            }
+        }
         refresh.setOnClickListener { loadDeviceMusic() }
         search.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
@@ -235,9 +258,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun connectPlayer(afterConnected: (() -> Unit)? = null) {
         if (controller != null) {
-            playPause.isEnabled = true
-            previous.isEnabled = true
-            next.isEnabled = true
+            enablePlayerControls()
             afterConnected?.invoke()
             updateNowPlaying()
             return
@@ -248,9 +269,7 @@ class MainActivity : AppCompatActivity() {
             runCatching { future.get() }.onSuccess { mediaController ->
                 controller = mediaController
                 controller?.addListener(playerListener)
-                playPause.isEnabled = true
-                previous.isEnabled = true
-                next.isEnabled = true
+                enablePlayerControls()
                 status.text = "LANU Player bağlı"
                 updateNowPlaying()
                 afterConnected?.invoke()
@@ -258,6 +277,25 @@ class MainActivity : AppCompatActivity() {
                 status.text = "Player bağlantı hatası: ${error.message ?: "bilinmeyen hata"}"
             }
         }, mainExecutor)
+    }
+
+    private fun enablePlayerControls() {
+        playPause.isEnabled = true
+        previous.isEnabled = true
+        next.isEnabled = true
+        shuffle.isEnabled = true
+        repeat.isEnabled = true
+        updatePlayerModeLabels()
+    }
+
+    private fun updatePlayerModeLabels() {
+        val c = controller ?: return
+        shuffle.text = if (c.shuffleModeEnabled) "Karıştır: Açık" else "Karıştır: Kapalı"
+        repeat.text = when (c.repeatMode) {
+            Player.REPEAT_MODE_ALL -> "Tekrar: Tümü"
+            Player.REPEAT_MODE_ONE -> "Tekrar: Tek"
+            else -> "Tekrar: Kapalı"
+        }
     }
 
     private fun updateNowPlaying() {
@@ -268,6 +306,7 @@ class MainActivity : AppCompatActivity() {
         playPause.text = if (c.isPlaying) "Duraklat" else "Oynat"
         previous.isEnabled = c.hasPreviousMediaItem()
         next.isEnabled = c.hasNextMediaItem()
+        updatePlayerModeLabels()
     }
 
     override fun onDestroy() {
