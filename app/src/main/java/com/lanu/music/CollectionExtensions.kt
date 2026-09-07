@@ -5,4 +5,4 @@ package com.lanu.music
  * Keep insertion-order collections usable with the same API without
  * changing the existing playback/history model.
  */
-private fun <T> Set<T>.asReversed(): List<T> = toList().asReversed()
+fun <T> Set<T>.asReversed(): List<T> = toList().asReversed()
