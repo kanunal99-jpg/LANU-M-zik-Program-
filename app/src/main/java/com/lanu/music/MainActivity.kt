@@ -114,9 +114,44 @@ class MainActivity : AppCompatActivity() {
         content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 0, 0, dp(18)) }
         scroll.addView(content)
         root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        root.addView(buildMiniPlayer(), LinearLayout.LayoutParams(-1, dp(64)))
         root.addView(buildBottomBar(), LinearLayout.LayoutParams(-1, dp(68)))
         setContentView(root)
         renderHome()
+    }
+
+    private fun buildMiniPlayer(): View {
+        val surface = Color.rgb(34, 38, 44)
+        val muted = Color.rgb(157, 164, 174)
+        val mini = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(10), dp(6), dp(6), dp(6))
+            background = rounded(surface, 14)
+            setOnClickListener { scrollToNowPlaying() }
+        }
+        val cover = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            setImageResource(android.R.drawable.ic_media_play)
+            background = rounded(Color.rgb(50, 54, 61), 10)
+            contentDescription = "Çalan parça kapağı"
+        }
+        mini.addView(cover, LinearLayout.LayoutParams(dp(46), dp(46)))
+        val info = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(10), 0, dp(6), 0) }
+        miniTitle = TextView(this).apply { text = "LANU Music"; textSize = 13f; setTextColor(Color.WHITE); typeface = Typeface.DEFAULT_BOLD; maxLines = 1 }
+        miniArtist = TextView(this).apply { text = "Bir parça seç"; textSize = 11f; setTextColor(muted); maxLines = 1 }
+        info.addView(miniTitle); info.addView(miniArtist, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(3) })
+        mini.addView(info, LinearLayout.LayoutParams(0, -2, 1f))
+        miniPlay = Button(this).apply { text = "▶"; textSize = 17f; setTextColor(Color.WHITE); setBackgroundColor(Color.TRANSPARENT); setOnClickListener { controller?.let { if (it.isPlaying) it.pause() else it.play() } } }
+        mini.addView(miniPlay, LinearLayout.LayoutParams(dp(52), dp(52)))
+        val next = Button(this).apply { text = "›"; textSize = 28f; setTextColor(muted); setBackgroundColor(Color.TRANSPARENT); setOnClickListener { controller?.seekToNextMediaItem() } }
+        mini.addView(next, LinearLayout.LayoutParams(dp(42), dp(52)))
+        return mini
+    }
+
+    private fun scrollToNowPlaying() {
+        if (!::content.isInitialized) return
+        content.post { content.parent?.let { parent -> if (parent is ScrollView) parent.fullScroll(View.FOCUS_DOWN) } }
     }
 
     private fun renderHome() {
