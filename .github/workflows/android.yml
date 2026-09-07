@@ -3,7 +3,11 @@ name: Android APK
 on:
   push:
     branches: [ main ]
+    tags: [ 'v*' ]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -19,9 +23,30 @@ jobs:
           gradle-version: '8.10.2'
       - name: Build debug APK
         run: gradle assembleDebug --stacktrace
-      - name: Prepare preview APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/lanu-music-preview-v0.2.0.apk
-      - uses: actions/upload-artifact@v4
+      - name: Set APK filename
+        id: apk
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            VERSION="$GITHUB_REF_NAME"
+          else
+            VERSION="main-${GITHUB_SHA::7}"
+          fi
+          APK="lanu-music-${VERSION}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "app/build/outputs/apk/debug/$APK"
+          echo "path=app/build/outputs/apk/debug/$APK" >> "$GITHUB_OUTPUT"
+          echo "name=$APK" >> "$GITHUB_OUTPUT"
+      - name: Upload downloadable APK artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: lanu-music-preview-v0.2.0
-          path: app/build/outputs/apk/debug/lanu-music-preview-v0.2.0.apk
+          name: lanu-music-${{ github.ref_name }}
+          path: ${{ steps.apk.outputs.path }}
+          if-no-files-found: error
+      - name: Publish tagged APK as GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "${{ steps.apk.outputs.path }}" \
+            --title "LANU Music $GITHUB_REF_NAME" \
+            --generate-notes
