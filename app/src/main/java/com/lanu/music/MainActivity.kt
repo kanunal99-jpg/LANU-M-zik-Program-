@@ -5,6 +5,8 @@ import android.content.ComponentName
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
 import android.text.Editable
 import android.text.InputType
@@ -15,6 +17,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ListView
+import android.widget.SeekBar
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -33,18 +36,35 @@ class MainActivity : AppCompatActivity() {
     private lateinit var adapter: ArrayAdapter<String>
     private lateinit var status: TextView
     private lateinit var search: EditText
-    private lateinit var playPause: Button
     private lateinit var nowPlayingTitle: TextView
     private lateinit var nowPlayingArtist: TextView
+    private lateinit var positionText: TextView
+    private lateinit var durationText: TextView
+    private lateinit var progress: SeekBar
+    private lateinit var playPause: Button
     private lateinit var previous: Button
     private lateinit var next: Button
     private lateinit var shuffle: Button
     private lateinit var repeat: Button
+    private var userSeeking = false
+    private val progressHandler = Handler(Looper.getMainLooper())
+    private val progressUpdater = object : Runnable {
+        override fun run() {
+            updateProgress()
+            progressHandler.postDelayed(this, 500L)
+        }
+    }
 
     private val playerListener = object : Player.Listener {
-        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) = updateNowPlaying()
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            updateNowPlaying()
+            updateProgress()
+        }
         override fun onIsPlayingChanged(isPlaying: Boolean) = updateNowPlaying()
-        override fun onPlaybackStateChanged(playbackState: Int) = updateNowPlaying()
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            updateNowPlaying()
+            updateProgress()
+        }
         override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) = updatePlayerModeLabels()
         override fun onRepeatModeChanged(repeatMode: Int) = updatePlayerModeLabels()
     }
@@ -58,15 +78,12 @@ class MainActivity : AppCompatActivity() {
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (!granted) {
-            status.text = "Bildirim izni verilmedi; medya bildirimi görünmeyebilir"
-        }
+        if (!granted) status.text = "Bildirim izni verilmedi; medya bildirimi görünmeyebilir"
         ensureAudioPermission()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(24, 40, 24, 24)
@@ -77,25 +94,24 @@ class MainActivity : AppCompatActivity() {
             textSize = 16f
             setPadding(0, 16, 0, 12)
         })
-
         search = EditText(this).apply {
             hint = "Şarkı, sanatçı veya albüm ara…"
             inputType = InputType.TYPE_CLASS_TEXT
             setSingleLine(true)
         }
         root.addView(search)
-
-        nowPlayingTitle = TextView(this).apply {
-            text = "Şimdi çalıyor"
-            textSize = 20f
-        }
+        nowPlayingTitle = TextView(this).apply { text = "Şimdi çalıyor"; textSize = 20f }
         root.addView(nowPlayingTitle)
-        nowPlayingArtist = TextView(this).apply {
-            text = "Bir parça seç"
-            textSize = 15f
-        }
+        nowPlayingArtist = TextView(this).apply { text = "Bir parça seç"; textSize = 15f }
         root.addView(nowPlayingArtist)
-
+        val progressRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        positionText = TextView(this).apply { text = "0:00" }
+        durationText = TextView(this).apply { text = "0:00" }
+        progress = SeekBar(this).apply { max = 1000; isEnabled = false }
+        progressRow.addView(positionText, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        progressRow.addView(progress, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        progressRow.addView(durationText, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        root.addView(progressRow)
         val playerControls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         previous = Button(this).apply { text = "Önceki"; isEnabled = false }
         playPause = Button(this).apply { text = "Oynat"; isEnabled = false }
@@ -104,37 +120,28 @@ class MainActivity : AppCompatActivity() {
         playerControls.addView(playPause, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         playerControls.addView(next, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         root.addView(playerControls)
-
         val modeControls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         shuffle = Button(this).apply { text = "Karıştır: Kapalı"; isEnabled = false }
         repeat = Button(this).apply { text = "Tekrar: Kapalı"; isEnabled = false }
         modeControls.addView(shuffle, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         modeControls.addView(repeat, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         root.addView(modeControls)
-
         status = TextView(this).apply { text = "Müzik kitaplığı hazırlanıyor…"; textSize = 15f }
         root.addView(status)
-
         val controls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val connect = Button(this).apply { text = "Player" }
         val refresh = Button(this).apply { text = "Yenile" }
         controls.addView(connect)
         controls.addView(refresh)
         root.addView(controls)
-
         adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, mutableListOf())
         val list = ListView(this).apply { adapter = this@MainActivity.adapter }
         root.addView(list, LinearLayout.LayoutParams(-1, 0, 1f))
-
         connect.setOnClickListener { connectPlayer() }
-        playPause.setOnClickListener {
-            controller?.let { if (it.isPlaying) it.pause() else it.play() }
-        }
+        playPause.setOnClickListener { controller?.let { if (it.isPlaying) it.pause() else it.play() } }
         previous.setOnClickListener { controller?.seekToPreviousMediaItem() }
         next.setOnClickListener { controller?.seekToNextMediaItem() }
-        shuffle.setOnClickListener {
-            controller?.let { it.shuffleModeEnabled = !it.shuffleModeEnabled }
-        }
+        shuffle.setOnClickListener { controller?.let { it.shuffleModeEnabled = !it.shuffleModeEnabled } }
         repeat.setOnClickListener {
             controller?.let {
                 it.repeatMode = when (it.repeatMode) {
@@ -144,6 +151,16 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+        progress.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onStartTrackingTouch(seekBar: SeekBar?) { userSeeking = true }
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                val c = controller
+                if (c != null && c.duration > 0) c.seekTo((c.duration * (progress.progress / 1000f)).toLong())
+                userSeeking = false
+                updateProgress()
+            }
+            override fun onProgressChanged(seekBar: SeekBar?, value: Int, fromUser: Boolean) = Unit
+        })
         refresh.setOnClickListener { loadDeviceMusic() }
         search.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
@@ -151,51 +168,28 @@ class MainActivity : AppCompatActivity() {
             override fun afterTextChanged(s: Editable?) = Unit
         })
         list.setOnItemClickListener { _, _, position, _ -> playTrack(position) }
-
         setContentView(root)
         ensureNotificationPermission()
+        progressHandler.post(progressUpdater)
     }
 
     private fun ensureNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) {
+        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        } else {
-            ensureAudioPermission()
-        }
+        } else ensureAudioPermission()
     }
 
     private fun ensureAudioPermission() {
-        val permission = if (Build.VERSION.SDK_INT >= 33) {
-            Manifest.permission.READ_MEDIA_AUDIO
-        } else {
-            Manifest.permission.READ_EXTERNAL_STORAGE
-        }
-        if (ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED) {
-            loadDeviceMusic()
-        } else {
-            permissionLauncher.launch(permission)
-        }
+        val permission = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
+        if (ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED) loadDeviceMusic()
+        else permissionLauncher.launch(permission)
     }
 
     private fun loadDeviceMusic() {
         tracks.clear()
-        val projection = arrayOf(
-            MediaStore.Audio.Media._ID,
-            MediaStore.Audio.Media.TITLE,
-            MediaStore.Audio.Media.ARTIST,
-            MediaStore.Audio.Media.ALBUM,
-            MediaStore.Audio.Media.DURATION
-        )
+        val projection = arrayOf(MediaStore.Audio.Media._ID, MediaStore.Audio.Media.TITLE, MediaStore.Audio.Media.ARTIST, MediaStore.Audio.Media.ALBUM, MediaStore.Audio.Media.DURATION)
         runCatching {
-            contentResolver.query(
-                MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
-                projection,
-                "${MediaStore.Audio.Media.IS_MUSIC} != 0",
-                null,
-                "${MediaStore.Audio.Media.TITLE} COLLATE NOCASE ASC"
-            )?.use { cursor ->
+            contentResolver.query(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, projection, "${MediaStore.Audio.Media.IS_MUSIC} != 0", null, "${MediaStore.Audio.Media.TITLE} COLLATE NOCASE ASC")?.use { cursor ->
                 val idCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
                 val titleCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
                 val artistCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
@@ -203,14 +197,7 @@ class MainActivity : AppCompatActivity() {
                 val durationCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
                 while (cursor.moveToNext()) {
                     val id = cursor.getLong(idCol)
-                    tracks += MusicTrack(
-                        id = id,
-                        title = cursor.getString(titleCol) ?: "Bilinmeyen parça",
-                        artist = cursor.getString(artistCol) ?: "Bilinmeyen sanatçı",
-                        album = cursor.getString(albumCol) ?: "Bilinmeyen albüm",
-                        uri = "${MediaStore.Audio.Media.EXTERNAL_CONTENT_URI}/$id",
-                        durationMs = cursor.getLong(durationCol)
-                    )
+                    tracks += MusicTrack(id, cursor.getString(titleCol) ?: "Bilinmeyen parça", cursor.getString(artistCol) ?: "Bilinmeyen sanatçı", cursor.getString(albumCol) ?: "Bilinmeyen albüm", "${MediaStore.Audio.Media.EXTERNAL_CONTENT_URI}/$id", cursor.getLong(durationCol))
                 }
             }
         }.onFailure { error -> status.text = "Kitaplık hatası: ${error.message ?: "bilinmeyen hata"}" }
@@ -220,9 +207,7 @@ class MainActivity : AppCompatActivity() {
     private fun filterTracks(query: String) {
         val q = query.trim()
         visibleTracks.clear()
-        visibleTracks += if (q.isEmpty()) tracks else tracks.filter {
-            it.title.contains(q, true) || it.artist.contains(q, true) || it.album.contains(q, true)
-        }
+        visibleTracks += if (q.isEmpty()) tracks else tracks.filter { it.title.contains(q, true) || it.artist.contains(q, true) || it.album.contains(q, true) }
         adapter.clear()
         adapter.addAll(visibleTracks.map { "${it.title}\n${it.artist} • ${it.album}" })
         adapter.notifyDataSetChanged()
@@ -238,19 +223,9 @@ class MainActivity : AppCompatActivity() {
         val selected = visibleTracks[position]
         val queueIndex = tracks.indexOfFirst { it.id == selected.id }
         if (queueIndex < 0) return
-
         connectPlayer {
             val queue = tracks.map { track ->
-                MediaItem.Builder()
-                    .setUri(track.uri)
-                    .setMediaMetadata(
-                        MediaMetadata.Builder()
-                            .setTitle(track.title)
-                            .setArtist(track.artist)
-                            .setAlbumTitle(track.album)
-                            .build()
-                    )
-                    .build()
+                MediaItem.Builder().setUri(track.uri).setMediaMetadata(MediaMetadata.Builder().setTitle(track.title).setArtist(track.artist).setAlbumTitle(track.album).build()).build()
             }
             controller?.setMediaItems(queue, queueIndex, 0L)
             controller?.prepare()
@@ -280,9 +255,7 @@ class MainActivity : AppCompatActivity() {
                 status.text = "LANU Player bağlı"
                 updateNowPlaying()
                 afterConnected?.invoke()
-            }.onFailure { error ->
-                status.text = "Player bağlantı hatası: ${error.message ?: "bilinmeyen hata"}"
-            }
+            }.onFailure { error -> status.text = "Player bağlantı hatası: ${error.message ?: "bilinmeyen hata"}" }
         }, mainExecutor)
     }
 
@@ -292,6 +265,7 @@ class MainActivity : AppCompatActivity() {
         next.isEnabled = true
         shuffle.isEnabled = true
         repeat.isEnabled = true
+        progress.isEnabled = true
         updatePlayerModeLabels()
     }
 
@@ -316,7 +290,22 @@ class MainActivity : AppCompatActivity() {
         updatePlayerModeLabels()
     }
 
+    private fun updateProgress() {
+        val c = controller ?: return
+        val duration = c.duration
+        val position = c.currentPosition.coerceAtLeast(0L)
+        if (duration > 0L && !userSeeking) progress.progress = ((position.toDouble() / duration.toDouble()) * 1000.0).toInt().coerceIn(0, 1000)
+        positionText.text = formatTime(position)
+        durationText.text = formatTime(duration.takeIf { it > 0L } ?: 0L)
+    }
+
+    private fun formatTime(ms: Long): String {
+        val totalSeconds = (ms / 1000L).coerceAtLeast(0L)
+        return "%d:%02d".format(totalSeconds / 60L, totalSeconds % 60L)
+    }
+
     override fun onDestroy() {
+        progressHandler.removeCallbacks(progressUpdater)
         controller?.removeListener(playerListener)
         controller?.release()
         controller = null
