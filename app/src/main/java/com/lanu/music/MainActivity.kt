@@ -6,10 +6,13 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import android.text.Editable
+import android.text.TextWatcher
+import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ListView
-import android.widget.ArrayAdapter
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -22,8 +25,10 @@ import androidx.media3.session.SessionToken
 class MainActivity : AppCompatActivity() {
     private var controller: MediaController? = null
     private val tracks = mutableListOf<MusicTrack>()
+    private val visibleTracks = mutableListOf<MusicTrack>()
     private lateinit var adapter: ArrayAdapter<String>
     private lateinit var status: TextView
+    private lateinit var search: EditText
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -42,17 +47,29 @@ class MainActivity : AppCompatActivity() {
         root.addView(TextView(this).apply {
             text = "Cihazındaki müzikleri otomatik bulur ve LANU Player içinde çalar."
             textSize = 16f
-            setPadding(0, 16, 0, 16)
+            setPadding(0, 16, 0, 12)
         })
 
-        status = TextView(this).apply { text = "Müzik kitaplığı hazırlanıyor…"; textSize = 15f }
+        search = EditText(this).apply {
+            hint = "Şarkı, sanatçı veya albüm ara"
+            singleLine = true
+        }
+        root.addView(search)
+
+        status = TextView(this).apply {
+            text = "Müzik kitaplığı hazırlanıyor…"
+            textSize = 15f
+            setPadding(0, 12, 0, 12)
+        }
         root.addView(status)
 
         val controls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val connect = Button(this).apply { text = "Player" }
         val playPause = Button(this).apply { text = "Oynat / Duraklat"; isEnabled = false }
+        val refresh = Button(this).apply { text = "Yenile" }
         controls.addView(connect)
         controls.addView(playPause)
+        controls.addView(refresh)
         root.addView(controls)
 
         adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, mutableListOf())
@@ -60,11 +77,17 @@ class MainActivity : AppCompatActivity() {
         root.addView(list, LinearLayout.LayoutParams(-1, 0, 1f))
 
         connect.setOnClickListener { connectPlayer(playPause) }
+        refresh.setOnClickListener { loadDeviceMusic() }
         playPause.setOnClickListener {
             controller?.let { if (it.isPlaying) it.pause() else it.play() }
         }
+        search.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = filterTracks(s?.toString().orEmpty())
+            override fun afterTextChanged(s: Editable?) = Unit
+        })
         list.setOnItemClickListener { _, _, position, _ ->
-            val track = tracks[position]
+            val track = visibleTracks[position]
             connectPlayer(playPause) {
                 controller?.setMediaItem(
                     MediaItem.Builder()
@@ -111,37 +134,53 @@ class MainActivity : AppCompatActivity() {
             MediaStore.Audio.Media.DURATION
         )
         val collection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
-        contentResolver.query(
-            collection,
-            projection,
-            "${MediaStore.Audio.Media.IS_MUSIC} != 0",
-            null,
-            "${MediaStore.Audio.Media.TITLE} COLLATE NOCASE ASC"
-        )?.use { cursor ->
-            val idCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
-            val titleCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
-            val artistCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
-            val albumCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
-            val durationCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
-            while (cursor.moveToNext()) {
-                val id = cursor.getLong(idCol)
-                tracks += MusicTrack(
-                    id = id,
-                    title = cursor.getString(titleCol) ?: "Bilinmeyen parça",
-                    artist = cursor.getString(artistCol) ?: "Bilinmeyen sanatçı",
-                    album = cursor.getString(albumCol) ?: "Bilinmeyen albüm",
-                    uri = "${MediaStore.Audio.Media.EXTERNAL_CONTENT_URI}/$id",
-                    durationMs = cursor.getLong(durationCol)
-                )
+        runCatching {
+            contentResolver.query(
+                collection,
+                projection,
+                "${MediaStore.Audio.Media.IS_MUSIC} != 0",
+                null,
+                "${MediaStore.Audio.Media.TITLE} COLLATE NOCASE ASC"
+            )?.use { cursor ->
+                val idCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
+                val titleCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
+                val artistCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
+                val albumCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
+                val durationCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(idCol)
+                    tracks += MusicTrack(
+                        id = id,
+                        title = cursor.getString(titleCol) ?: "Bilinmeyen parça",
+                        artist = cursor.getString(artistCol) ?: "Bilinmeyen sanatçı",
+                        album = cursor.getString(albumCol) ?: "Bilinmeyen albüm",
+                        uri = "${MediaStore.Audio.Media.EXTERNAL_CONTENT_URI}/$id",
+                        durationMs = cursor.getLong(durationCol)
+                    )
+                }
             }
+        }.onFailure {
+            status.text = "Müzik kitaplığı okunamadı: ${it.message ?: "bilinmeyen hata"}"
+        }
+        filterTracks(search.text?.toString().orEmpty())
+        if (tracks.isNotEmpty()) status.text = "${tracks.size} parça bulundu"
+        else if (status.text.toString().startsWith("Müzik kitaplığı")) status.text = "Cihazda müzik bulunamadı"
+    }
+
+    private fun filterTracks(query: String) {
+        val normalized = query.trim().lowercase()
+        visibleTracks.clear()
+        visibleTracks += tracks.filter {
+            normalized.isEmpty() ||
+                it.title.lowercase().contains(normalized) ||
+                it.artist.lowercase().contains(normalized) ||
+                it.album.lowercase().contains(normalized)
         }
         adapter.clear()
-        adapter.addAll(tracks.map { "${it.title}\n${it.artist} • ${it.album}" })
+        adapter.addAll(visibleTracks.map { "${it.title}\n${it.artist} • ${it.album}" })
         adapter.notifyDataSetChanged()
-        status.text = if (tracks.isEmpty()) {
-            "Cihazda müzik bulunamadı"
-        } else {
-            "${tracks.size} parça bulundu"
+        if (tracks.isNotEmpty() && normalized.isNotEmpty()) {
+            status.text = "${visibleTracks.size} sonuç • ${tracks.size} toplam parça"
         }
     }
 
