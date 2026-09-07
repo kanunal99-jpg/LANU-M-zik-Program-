@@ -4,7 +4,6 @@ import android.app.PendingIntent
 import android.content.Intent
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
-import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
@@ -20,16 +19,11 @@ class PlaybackService : MediaSessionService() {
                 AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)
                     .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
-                    .build(), true
+                    .build(),
+                true
             )
-            setMediaItem(
-                MediaItem.Builder()
-                    .setUri("https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3")
-                    .build()
-            )
-            prepare()
-            playWhenReady = true
         }
+
         val sessionIntent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
             this,
