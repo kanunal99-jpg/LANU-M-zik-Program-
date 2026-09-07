@@ -50,6 +50,12 @@ class MainActivity : AppCompatActivity() {
         if (granted) loadDeviceMusic() else status.text = "Müzik erişimi verilmedi"
     }
 
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (!granted) status.text = "Bildirim izni verilmedi; kilit ekranı medya bildirimi görünmeyebilir"
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -120,7 +126,16 @@ class MainActivity : AppCompatActivity() {
         list.setOnItemClickListener { _, _, position, _ -> playTrack(position) }
 
         setContentView(root)
+        ensureNotificationPermission()
         ensureAudioPermission()
+    }
+
+    private fun ensureNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
     }
 
     private fun ensureAudioPermission() {
