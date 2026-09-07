@@ -9,6 +9,7 @@ import android.provider.MediaStore
 import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
+import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
@@ -20,6 +21,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 
@@ -31,6 +33,16 @@ class MainActivity : AppCompatActivity() {
     private lateinit var status: TextView
     private lateinit var search: EditText
     private lateinit var playPause: Button
+    private lateinit var nowPlayingTitle: TextView
+    private lateinit var nowPlayingArtist: TextView
+    private lateinit var previous: Button
+    private lateinit var next: Button
+
+    private val playerListener = object : Player.Listener {
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) = updateNowPlaying()
+        override fun onIsPlayingChanged(isPlaying: Boolean) = updateNowPlaying()
+        override fun onPlaybackStateChanged(playbackState: Int) = updateNowPlaying()
+    }
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -59,15 +71,33 @@ class MainActivity : AppCompatActivity() {
         }
         root.addView(search)
 
+        nowPlayingTitle = TextView(this).apply {
+            text = "Şimdi çalıyor"
+            textSize = 20f
+        }
+        root.addView(nowPlayingTitle)
+        nowPlayingArtist = TextView(this).apply {
+            text = "Bir parça seç"
+            textSize = 15f
+        }
+        root.addView(nowPlayingArtist)
+
+        val playerControls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        previous = Button(this).apply { text = "Önceki"; isEnabled = false }
+        playPause = Button(this).apply { text = "Oynat"; isEnabled = false }
+        next = Button(this).apply { text = "Sonraki"; isEnabled = false }
+        playerControls.addView(previous, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        playerControls.addView(playPause, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        playerControls.addView(next, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        root.addView(playerControls)
+
         status = TextView(this).apply { text = "Müzik kitaplığı hazırlanıyor…"; textSize = 15f }
         root.addView(status)
 
         val controls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val connect = Button(this).apply { text = "Player" }
-        playPause = Button(this).apply { text = "Oynat / Duraklat"; isEnabled = false }
         val refresh = Button(this).apply { text = "Yenile" }
         controls.addView(connect)
-        controls.addView(playPause)
         controls.addView(refresh)
         root.addView(controls)
 
@@ -79,6 +109,8 @@ class MainActivity : AppCompatActivity() {
         playPause.setOnClickListener {
             controller?.let { if (it.isPlaying) it.pause() else it.play() }
         }
+        previous.setOnClickListener { controller?.seekToPreviousMediaItem() }
+        next.setOnClickListener { controller?.seekToNextMediaItem() }
         refresh.setOnClickListener { loadDeviceMusic() }
         search.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
@@ -178,13 +210,17 @@ class MainActivity : AppCompatActivity() {
             controller?.prepare()
             controller?.play()
             status.text = "Çalıyor: ${selected.title} — ${selected.artist}"
+            updateNowPlaying()
         }
     }
 
     private fun connectPlayer(afterConnected: (() -> Unit)? = null) {
         if (controller != null) {
             playPause.isEnabled = true
+            previous.isEnabled = true
+            next.isEnabled = true
             afterConnected?.invoke()
+            updateNowPlaying()
             return
         }
         val token = SessionToken(this, ComponentName(this, PlaybackService::class.java))
@@ -192,8 +228,12 @@ class MainActivity : AppCompatActivity() {
         future.addListener({
             runCatching { future.get() }.onSuccess { mediaController ->
                 controller = mediaController
+                controller?.addListener(playerListener)
                 playPause.isEnabled = true
+                previous.isEnabled = true
+                next.isEnabled = true
                 status.text = "LANU Player bağlı"
+                updateNowPlaying()
                 afterConnected?.invoke()
             }.onFailure { error ->
                 status.text = "Player bağlantı hatası: ${error.message ?: "bilinmeyen hata"}"
@@ -201,7 +241,18 @@ class MainActivity : AppCompatActivity() {
         }, mainExecutor)
     }
 
+    private fun updateNowPlaying() {
+        val c = controller ?: return
+        val item = c.currentMediaItem
+        nowPlayingTitle.text = item?.mediaMetadata?.title?.toString() ?: "Şimdi çalıyor"
+        nowPlayingArtist.text = item?.mediaMetadata?.artist?.toString() ?: "Bir parça seç"
+        playPause.text = if (c.isPlaying) "Duraklat" else "Oynat"
+        previous.isEnabled = c.hasPreviousMediaItem()
+        next.isEnabled = c.hasNextMediaItem()
+    }
+
     override fun onDestroy() {
+        controller?.removeListener(playerListener)
         controller?.release()
         controller = null
         super.onDestroy()
