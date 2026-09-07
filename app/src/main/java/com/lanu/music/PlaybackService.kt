@@ -22,12 +22,24 @@ class PlaybackService : MediaSessionService() {
                     .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
                     .build(), true
             )
-            setMediaItem(MediaItem.Builder().setUri("https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3").build())
+            setMediaItem(
+                MediaItem.Builder()
+                    .setUri("https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3")
+                    .build()
+            )
             prepare()
+            playWhenReady = true
         }
         val sessionIntent = Intent(this, MainActivity::class.java)
-        val pendingIntent = PendingIntent.getActivity(this, 0, sessionIntent, PendingIntent.FLAG_IMMUTABLE)
-        mediaSession = MediaSession.Builder(this, player).setSessionActivity(pendingIntent).build()
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            sessionIntent,
+            PendingIntent.FLAG_IMMUTABLE
+        )
+        mediaSession = MediaSession.Builder(this, player)
+            .setSessionActivity(pendingIntent)
+            .build()
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession = mediaSession
