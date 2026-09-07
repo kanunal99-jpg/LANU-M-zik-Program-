@@ -19,7 +19,9 @@ jobs:
           gradle-version: '8.10.2'
       - name: Build debug APK
         run: gradle assembleDebug --stacktrace
+      - name: Prepare preview APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/lanu-music-preview-v0.2.0.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: lanu-music-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: lanu-music-preview-v0.2.0
+          path: app/build/outputs/apk/debug/lanu-music-preview-v0.2.0.apk
