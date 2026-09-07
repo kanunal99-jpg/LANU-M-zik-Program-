@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.text.Editable
+import android.text.InputType
 import android.text.TextWatcher
 import android.widget.ArrayAdapter
 import android.widget.Button
@@ -53,7 +54,8 @@ class MainActivity : AppCompatActivity() {
 
         search = EditText(this).apply {
             hint = "Şarkı, sanatçı veya albüm ara…"
-            singleLine = true
+            inputType = InputType.TYPE_CLASS_TEXT
+            setSingleLine(true)
         }
         root.addView(search)
 
