@@ -16,28 +16,13 @@ data class LanuPlaylist(
 class PlaylistStore(context: Context) {
     private val prefs = context.getSharedPreferences("lanu_music", Context.MODE_PRIVATE)
     private val key = "playlists_v1"
+    private val backupKey = "playlists_v1_backup"
     private val maxPlaylists = 100
     private val maxNameLength = 60
 
-    fun load(): List<LanuPlaylist> = runCatching {
-        val raw = prefs.getString(key, null) ?: return emptyList()
-        val array = JSONArray(raw)
-        buildList {
-            for (i in 0 until array.length()) {
-                val o = array.optJSONObject(i) ?: continue
-                val id = o.optString("id").trim()
-                val name = normalizeName(o.optString("name"))
-                if (id.isEmpty() || name.isEmpty()) continue
-                val ids = buildList {
-                    val tracks = o.optJSONArray("trackIds") ?: JSONArray()
-                    for (j in 0 until tracks.length()) {
-                        tracks.optLong(j, -1L).takeIf { it > 0 }?.let(::add)
-                    }
-                }.distinct()
-                add(LanuPlaylist(id, name, ids, o.optLong("createdAt"), o.optLong("updatedAt")))
-            }
-        }
-    }.getOrElse { emptyList() }
+    fun load(): List<LanuPlaylist> = parse(prefs.getString(key, null))
+        ?: parse(prefs.getString(backupKey, null))
+        ?: emptyList()
 
     fun create(name: String): LanuPlaylist? {
         val clean = normalizeName(name)
@@ -107,17 +92,45 @@ class PlaylistStore(context: Context) {
     private fun normalizeName(value: String): String =
         value.trim().replace(Regex("\\s+"), " ").take(maxNameLength)
 
+    private fun parse(raw: String?): List<LanuPlaylist>? = runCatching {
+        if (raw.isNullOrBlank()) return@runCatching emptyList()
+        val array = JSONArray(raw)
+        buildList {
+            val seenIds = mutableSetOf<String>()
+            for (i in 0 until array.length()) {
+                val o = array.optJSONObject(i) ?: continue
+                val id = o.optString("id").trim()
+                val name = normalizeName(o.optString("name"))
+                if (id.isEmpty() || name.isEmpty() || !seenIds.add(id)) continue
+                val ids = buildList {
+                    val tracks = o.optJSONArray("trackIds") ?: JSONArray()
+                    for (j in 0 until tracks.length()) {
+                        tracks.optLong(j, -1L).takeIf { it > 0 }?.let(::add)
+                    }
+                }.distinct()
+                add(LanuPlaylist(id, name, ids, o.optLong("createdAt"), o.optLong("updatedAt")))
+                if (size >= maxPlaylists) break
+            }
+        }
+    }.getOrNull()
+
     private fun save(playlists: List<LanuPlaylist>) {
         val array = JSONArray()
-        playlists.forEach { p ->
+        playlists.take(maxPlaylists).forEach { p ->
             val o = JSONObject()
                 .put("id", p.id)
-                .put("name", p.name)
+                .put("name", normalizeName(p.name))
                 .put("createdAt", p.createdAt)
                 .put("updatedAt", p.updatedAt)
-            o.put("trackIds", JSONArray().apply { p.trackIds.forEach { put(it) } })
+            o.put("trackIds", JSONArray().apply { p.trackIds.filter { it > 0 }.distinct().forEach { put(it) } })
             array.put(o)
         }
-        prefs.edit().putString(key, array.toString()).apply()
+        val previous = prefs.getString(key, null)
+        prefs.edit()
+            .apply {
+                if (!previous.isNullOrBlank()) putString(backupKey, previous)
+                putString(key, array.toString())
+            }
+            .apply()
     }
 }
