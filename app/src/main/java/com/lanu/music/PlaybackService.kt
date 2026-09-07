@@ -23,6 +23,7 @@ class PlaybackService : MediaSessionService() {
                     .build(),
                 true
             )
+            setHandleAudioBecomingNoisy(true)
             repeatMode = Player.REPEAT_MODE_OFF
         }
 
