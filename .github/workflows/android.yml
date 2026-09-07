@@ -21,6 +21,21 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
+      - name: Repair playlist source syntax
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/lanu/music/MainActivity.kt')
+          s = p.read_text()
+          old = 'c.getLong(duration))}}}}.onFailure'
+          new = 'c.getLong(duration))}}}.onFailure'
+          if old in s:
+              p.write_text(s.replace(old, new, 1))
+              print('Repaired extra closing brace in loadDeviceMusic')
+          else:
+              print('No source repair needed')
+          PY
       - name: Build debug APK
         run: gradle assembleDebug --stacktrace
       - name: Set APK filename
@@ -42,6 +57,21 @@ jobs:
           name: lanu-music-${{ github.ref_name }}
           path: ${{ steps.apk.outputs.path }}
           if-no-files-found: error
+      - name: Store APK in repository
+        if: github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          mkdir -p releases
+          cp "${{ steps.apk.outputs.path }}" "releases/${{ steps.apk.outputs.name }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add releases/${{ steps.apk.outputs.name }}
+          if git diff --cached --quiet; then
+            echo "APK already present in repository"
+          else
+            git commit -m "build: add ${{ steps.apk.outputs.name }} [skip ci]"
+            git push origin HEAD:main
+          fi
       - name: Publish tagged APK as GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
