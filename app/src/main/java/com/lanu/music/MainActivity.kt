@@ -87,7 +87,7 @@ class MainActivity : AppCompatActivity() {
         content.removeAllViews()
         val muted=Color.rgb(157,164,174); val surface=Color.rgb(25,28,33); val green=Color.rgb(30,215,96)
         val header=LinearLayout(this).apply{gravity=Gravity.CENTER_VERTICAL}
-        header.addView(TextView(this).apply{text="LANU";textSize=29f;setTextColor(Color.WHITE);typeface=Typeface.DEFAULT_BOLD},LinearLayout.LayoutParams(0,dp(52),1f))
+        header.addView(TextView(this).apply{text="LANU";contentDescription="Lanu";textSize=29f;setTextColor(Color.WHITE);typeface=Typeface.DEFAULT_BOLD},LinearLayout.LayoutParams(0,dp(52),1f))
         header.addView(TextView(this).apply{text="↻";textSize=27f;setTextColor(Color.WHITE);gravity=Gravity.CENTER;setOnClickListener{loadDeviceMusic()}},LinearLayout.LayoutParams(dp(48),dp(48)))
         content.addView(header)
         content.addView(TextView(this).apply{text=if(tracks.isEmpty())"Müziğin burada."else"Kitaplığın hazır.";textSize=14f;setTextColor(muted);setPadding(0,0,0,dp(12))})
