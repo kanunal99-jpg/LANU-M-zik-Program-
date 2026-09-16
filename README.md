@@ -15,15 +15,21 @@ Spotify-benzeri, bağımsız ve ücretsiz Android müzik oynatıcı.
 ## Teknoloji
 Android Native + Kotlin + Media3/ExoPlayer.
 
-## 📱 En Son İndirilebilir APK
+## Doğrulanmış mevcut durum
+- Media3 ExoPlayer + MediaSession playback service aktif.
+- Android foreground media playback izinleri tanımlı.
+- Cihazdaki gerçek MediaStore ses kütüphanesi kullanılır; sahte şarkı/stream kataloğu eklenmez.
+- Playlist, favori, kuyruk, shuffle/repeat, seek ve albüm kapağı fallback'i mevcut.
+- GitHub Actions statik smoke kontrolleri + debug APK build + SHA-256 checksum üretimi yapar.
+- Gemini API anahtarı APK içine gömülmez. Canlı Gemini entegrasyonu için güvenli bir backend/provider katmanı gereklidir; şu an güvenli yerel katalog/fallback çalışır.
 
-### LANU Music — Run #40
+## 📱 En Son Doğrulanmış APK
 
-**Sürüm:** `7c733615`  
-**Build:** ✅ Başarılı  
-**APK:** `lanu-music-main-7c73361.apk`  
-**SHA-256:** `5384c337091b197f49eb52a02e3e278cedc60ab786ad2eab91240d820b8d4fd4`  
+**CI Run:** `#50`  
+**Kaynak commit:** `063e16b205430dd2f098c71a744add493081247f`  
+**APK:** `lanu-music-main-063e16b.apk`  
+**SHA-256:** `bf28807d94da1faa15577fc51607db987b3228c5238b706d622921ea08e37b82`
 
-👉 **[⬇️ LANU Music APK'yı indir](https://github.com/kanunal99-jpg/LANU-M-zik-Program-/raw/refs/heads/main/releases/lanu-music-main-7c73361.apk)**
+👉 **[⬇️ LANU Music APK'yı indir](https://github.com/kanunal99-jpg/LANU-M-zik-Program-/raw/refs/heads/main/releases/lanu-music-main-063e16b.apk)**
 
-> Bu bölüm her yeni başarılı APK üretildiğinde güncellenecek ve repoda her zaman en son indirilebilir sürüm en altta tutulacaktır.
+👉 **[SHA-256 dosyasını görüntüle](https://github.com/kanunal99-jpg/LANU-M-zik-Program-/blob/main/releases/lanu-music-main-063e16b.apk.sha256)**
