@@ -47,6 +47,15 @@ jobs:
           grep -q 'CatalogDetailsClient.artist' app/src/main/java/com/lanu/music/MainActivity.kt
           grep -q 'CatalogDetailsClient.album' app/src/main/java/com/lanu/music/MainActivity.kt
           echo 'Catalog detail navigation wiring passed.'
+      - name: Harden playback error fallback
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/harden_playback_fallback.py
+          grep -q 'import androidx.media3.common.PlaybackException' app/src/main/java/com/lanu/music/MainActivity.kt
+          grep -q 'override fun onPlayerError' app/src/main/java/com/lanu/music/MainActivity.kt
+          grep -q 'c.removeMediaItem' app/src/main/java/com/lanu/music/MainActivity.kt
+          echo 'Playback error fallback wiring passed.'
       - name: Static smoke checks
         shell: bash
         run: |
@@ -61,8 +70,11 @@ jobs:
           grep -q 'CatalogDetailsClient' app/src/main/java/com/lanu/music/CatalogDetailsClient.kt
           grep -q 'ArtistPage' app/src/main/java/com/lanu/music/CatalogDetailsClient.kt
           grep -q 'AlbumPage' app/src/main/java/com/lanu/music/CatalogDetailsClient.kt
+          grep -q 'ifEmpty' app/src/main/java/com/lanu/music/CatalogDetailsClient.kt
+          grep -q 'Catalog connection setup failed' app/src/main/java/com/lanu/music/CatalogDetailsClient.kt
           grep -q 'private fun renderArtistPage' app/src/main/java/com/lanu/music/MainActivity.kt
           grep -q 'private fun renderAlbumPage' app/src/main/java/com/lanu/music/MainActivity.kt
+          grep -q 'override fun onPlayerError' app/src/main/java/com/lanu/music/MainActivity.kt
           test -f app/src/main/java/com/lanu/music/OnlineCatalogClient.kt
           test -f app/src/main/java/com/lanu/music/CatalogDetailsClient.kt
           test -f app/src/main/java/com/lanu/music/PlaybackService.kt
