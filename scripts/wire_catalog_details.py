@@ -3,6 +3,10 @@ from pathlib import Path
 path = Path('app/src/main/java/com/lanu/music/MainActivity.kt')
 s = path.read_text()
 
+if 'private fun addCatalogEntityLinks' in s and 'CatalogDetailsClient.artist' in s and 'CatalogDetailsClient.album' in s:
+    print('Catalog detail navigation already wired; no source rewrite needed')
+    raise SystemExit(0)
+
 old = '''    private fun renderCatalogCollection(query:String,items:List<MusicTrack>){
         content.removeAllViews()
         val muted=Color.rgb(157,164,174); val surface=Color.rgb(25,28,33); val green=Color.rgb(30,215,96)
