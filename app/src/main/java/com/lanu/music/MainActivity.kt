@@ -26,6 +26,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
@@ -54,6 +55,20 @@ class MainActivity : AppCompatActivity() {
     private val playerListener = object : Player.Listener {
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) { updateMiniPlayer() }
         override fun onIsPlayingChanged(isPlaying: Boolean) { updateMiniPlayer() }
+        override fun onPlayerError(error: PlaybackException) {
+            val c = controller ?: return
+            val failedIndex = c.currentMediaItemIndex
+            runOnUiThread {
+                status.text = "Parça oynatılamadı; sıradaki güvenli kaynak deneniyor."
+                if (failedIndex in 0 until c.mediaItemCount) {
+                    c.removeMediaItem(failedIndex)
+                    if (c.mediaItemCount > 0) c.play() else c.pause()
+                } else {
+                    c.pause()
+                }
+                updateMiniPlayer()
+            }
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
