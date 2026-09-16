@@ -45,6 +45,9 @@ jobs:
           grep -q 'android:foregroundServiceType="mediaPlayback"' app/src/main/AndroidManifest.xml
           grep -q 'androidx.media3:media3-exoplayer' app/build.gradle.kts
           grep -q 'androidx.media3:media3-session' app/build.gradle.kts
+          grep -q 'OnlineCatalogClient' app/src/main/java/com/lanu/music/MainActivity.kt
+          grep -q 'https://itunes.apple.com/search' app/src/main/java/com/lanu/music/OnlineCatalogClient.kt
+          test -f app/src/main/java/com/lanu/music/OnlineCatalogClient.kt
           test -f app/src/main/java/com/lanu/music/PlaybackService.kt
           test -f app/src/main/java/com/lanu/music/MusicTrack.kt
           test -f app/src/main/java/com/lanu/music/PlaylistStore.kt
