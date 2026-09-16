@@ -4,7 +4,16 @@ path = Path('app/src/main/java/com/lanu/music/MainActivity.kt')
 s = path.read_text()
 
 if 'import androidx.media3.common.PlaybackException' not in s:
-    s = s.replace('import androidx.media3.common.MediaMetadata\n', 'import androidx.media3.common.MediaMetadata\nimport androidx.media3.common.PlaybackException\n', 1)
+    marker = 'import androidx.media3.common.MediaMetadata\n'
+    if marker not in s:
+        raise SystemExit('Media3 import marker not found; refusing unsafe rewrite')
+    s = s.replace(marker, marker + 'import androidx.media3.common.PlaybackException\n', 1)
+
+# Idempotent: the fallback may already be present in the source after a previous change.
+if 'override fun onPlayerError(error: PlaybackException)' in s:
+    path.write_text(s)
+    print('Playback error fallback already hardened; no source rewrite needed')
+    raise SystemExit(0)
 
 old = '''    private val playerListener = object : Player.Listener {
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) { updateMiniPlayer() }
