@@ -36,6 +36,17 @@ jobs:
           else:
               print('No source repair needed')
           PY
+      - name: Wire catalog detail navigation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/wire_catalog_details.py
+          grep -q 'private fun addCatalogEntityLinks' app/src/main/java/com/lanu/music/MainActivity.kt
+          grep -q 'private fun renderArtistPage' app/src/main/java/com/lanu/music/MainActivity.kt
+          grep -q 'private fun renderAlbumPage' app/src/main/java/com/lanu/music/MainActivity.kt
+          grep -q 'CatalogDetailsClient.artist' app/src/main/java/com/lanu/music/MainActivity.kt
+          grep -q 'CatalogDetailsClient.album' app/src/main/java/com/lanu/music/MainActivity.kt
+          echo 'Catalog detail navigation wiring passed.'
       - name: Static smoke checks
         shell: bash
         run: |
@@ -50,6 +61,8 @@ jobs:
           grep -q 'CatalogDetailsClient' app/src/main/java/com/lanu/music/CatalogDetailsClient.kt
           grep -q 'ArtistPage' app/src/main/java/com/lanu/music/CatalogDetailsClient.kt
           grep -q 'AlbumPage' app/src/main/java/com/lanu/music/CatalogDetailsClient.kt
+          grep -q 'private fun renderArtistPage' app/src/main/java/com/lanu/music/MainActivity.kt
+          grep -q 'private fun renderAlbumPage' app/src/main/java/com/lanu/music/MainActivity.kt
           test -f app/src/main/java/com/lanu/music/OnlineCatalogClient.kt
           test -f app/src/main/java/com/lanu/music/CatalogDetailsClient.kt
           test -f app/src/main/java/com/lanu/music/PlaybackService.kt
