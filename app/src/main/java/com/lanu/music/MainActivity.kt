@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -28,6 +29,7 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import java.net.URL
 import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
@@ -43,6 +45,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var prefs: android.content.SharedPreferences
     private lateinit var playlistStore: PlaylistStore
     private val artworkExecutor = Executors.newSingleThreadExecutor()
+    private val catalogExecutor = Executors.newSingleThreadExecutor()
 
     private val permissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) loadDeviceMusic() else status.text = "Müzik erişimi verilmedi"
@@ -65,6 +68,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         artworkExecutor.shutdownNow()
+        catalogExecutor.shutdownNow()
         controller?.removeListener(playerListener)
         controller?.release()
         controller = null
@@ -92,7 +96,7 @@ class MainActivity : AppCompatActivity() {
         content.addView(header)
         content.addView(TextView(this).apply{text=if(tracks.isEmpty())"Müziğin burada."else"Kitaplığın hazır.";textSize=14f;setTextColor(muted);setPadding(0,0,0,dp(12))})
         val search=EditText(this).apply{hint="Şarkı, sanatçı veya albüm ara";setHintTextColor(Color.rgb(120,126,136));setTextColor(Color.WHITE);textSize=15f;inputType=InputType.TYPE_CLASS_TEXT;setSingleLine(true);setPadding(dp(16),0,dp(16),0);background=rounded(Color.rgb(34,38,44),16)}
-        search.setOnEditorActionListener{_,_,_->renderSearch(search.text.toString());true}
+        search.setOnEditorActionListener{_,_,_->searchCatalog(search.text.toString());true}
         content.addView(search,LinearLayout.LayoutParams(-1,dp(52)).apply{bottomMargin=dp(18)})
         content.addView(sectionTitle("Hızlı erişim",muted))
         val chips=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
@@ -108,11 +112,40 @@ class MainActivity : AppCompatActivity() {
             content.addView(sectionTitle("Sanatçılar",Color.WHITE)); addArtistRail(surface,muted)
             content.addView(sectionTitle("Kitaplığın",Color.WHITE)); addTrackList(tracks.take(30),surface,muted)
         }
-        status=TextView(this).apply{text=if(tracks.isEmpty())"Cihaz müzikleri bekleniyor…"else"Yerel kitaplık • çevrimdışı";textSize=12f;setTextColor(muted);setPadding(0,dp(10),0,dp(4))}
+        status=TextView(this).apply{text=if(tracks.isEmpty())"Yerel kitaplık • çevrimdışı • gerçek katalog araması hazır"else"Yerel kitaplık • çevrimdışı";textSize=12f;setTextColor(muted);setPadding(0,dp(10),0,dp(4))}
         content.addView(status)
     }
 
-    private fun renderSearch(query:String){val q=query.trim();if(q.isEmpty())return renderHome();renderCollection("Arama",tracks.filter{it.title.contains(q,true)||it.artist.contains(q,true)||it.album.contains(q,true)})}
+    private fun searchCatalog(query:String){
+        val q=query.trim()
+        if(q.isEmpty()) return renderHome()
+        val local=tracks.filter{it.title.contains(q,true)||it.artist.contains(q,true)||it.album.contains(q,true)}
+        if(local.isNotEmpty()) return renderCollection("Cihazındaki sonuçlar",local)
+        status.text="Gerçek katalog aranıyor…"
+        catalogExecutor.execute {
+            val results=runCatching{OnlineCatalogClient.search(q)}.getOrDefault(emptyList())
+            runOnUiThread {
+                if(isFinishing)return@runOnUiThread
+                if(results.isEmpty()) renderCollection("Gerçek katalog",emptyList())
+                else renderCatalogCollection(q,results)
+            }
+        }
+    }
+
+    private fun renderCatalogCollection(query:String,items:List<MusicTrack>){
+        content.removeAllViews()
+        val muted=Color.rgb(157,164,174); val surface=Color.rgb(25,28,33); val green=Color.rgb(30,215,96)
+        content.addView(TextView(this).apply{text="Gerçek katalog";textSize=27f;setTextColor(Color.WHITE);typeface=Typeface.DEFAULT_BOLD})
+        content.addView(TextView(this).apply{text="“$query” • ${items.size} sonuç • Apple/iTunes gerçek katalog verisi";textSize=13f;setTextColor(muted);setPadding(0,dp(4),0,dp(16))})
+        if(items.isEmpty()) addHint("Bu aramada sonuç bulunamadı. İnternet bağlantısını kontrol edip başka bir sanatçı veya şarkı deneyin.",muted)
+        else {
+            content.addView(TextView(this).apply{text="▶ Önizlemeler  •  kısa tanıtım örnekleri";textSize=12f;setTextColor(green);setPadding(0,0,0,dp(10))})
+            addTrackList(items,surface,muted)
+        }
+        content.addView(TextView(this).apply{text="Önizlemeler yalnızca katalog içeriğini tanıtmak içindir.";textSize=11f;setTextColor(muted);setPadding(0,dp(10),0,dp(8))})
+        addBack()
+    }
+
     private fun renderCollection(title:String,items:List<MusicTrack>){content.removeAllViews();val muted=Color.rgb(157,164,174);val surface=Color.rgb(25,28,33);content.addView(TextView(this).apply{text=title;textSize=27f;setTextColor(Color.WHITE);typeface=Typeface.DEFAULT_BOLD});content.addView(TextView(this).apply{text="${items.size} öğe";textSize=13f;setTextColor(muted);setPadding(0,dp(4),0,dp(16))});if(items.isEmpty())addHint("Burada henüz içerik yok.",muted)else addTrackList(items,surface,muted);addBack()}
 
     private fun renderPlaylists(){content.removeAllViews();val muted=Color.rgb(157,164,174);val surface=Color.rgb(25,28,33);val green=Color.rgb(30,215,96);content.addView(TextView(this).apply{text="Çalma listeleri";textSize=27f;setTextColor(Color.WHITE);typeface=Typeface.DEFAULT_BOLD});content.addView(TextView(this).apply{text="Müziğini kendi koleksiyonlarınla düzenle";textSize=13f;setTextColor(muted);setPadding(0,dp(4),0,dp(14))});content.addView(Button(this).apply{text="+ Yeni çalma listesi";setTextColor(Color.WHITE);background=rounded(green,16);setOnClickListener{showCreatePlaylistDialog()}},LinearLayout.LayoutParams(-1,dp(50)).apply{bottomMargin=dp(14)});val lists=playlistStore.load();lists.forEach{p->val row=LinearLayout(this).apply{gravity=Gravity.CENTER_VERTICAL;setPadding(dp(12),dp(10),dp(8),dp(10));background=rounded(surface,16);setOnClickListener{renderPlaylist(p.id)}};row.addView(TextView(this).apply{text="♫";textSize=25f;setTextColor(green);gravity=Gravity.CENTER},LinearLayout.LayoutParams(dp(48),dp(52)));val info=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(10),0,dp(6),0)};info.addView(TextView(this).apply{text=p.name;textSize=15f;setTextColor(Color.WHITE);typeface=Typeface.DEFAULT_BOLD;maxLines=1});info.addView(TextView(this).apply{text="${p.trackIds.size} parça";textSize=11f;setTextColor(muted);setPadding(0,dp(4),0,0)});row.addView(info,LinearLayout.LayoutParams(0,-2,1f));row.addView(TextView(this).apply{text="⋮";textSize=25f;setTextColor(muted);gravity=Gravity.CENTER;setOnClickListener{showPlaylistActions(p.id)}},LinearLayout.LayoutParams(dp(44),dp(52)));content.addView(row,LinearLayout.LayoutParams(-1,dp(72)).apply{bottomMargin=dp(7)})};if(lists.isEmpty())addHint("İlk çalma listeni oluştur ve parçalarını ekle.",muted);addBack()}
@@ -136,7 +169,7 @@ class MainActivity : AppCompatActivity() {
     private fun addTrackRail(items:List<MusicTrack>,surface:Int,muted:Int){if(items.isEmpty()){addHint("Henüz içerik yok.",muted);return};val row=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL};items.forEach{track->val box=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(5),dp(4),dp(5),dp(6));setOnClickListener{playTrack(track)}};val art=ImageView(this).apply{scaleType=ImageView.ScaleType.CENTER_CROP;setImageResource(android.R.drawable.ic_media_play);background=rounded(surface,14)};box.addView(art,LinearLayout.LayoutParams(dp(108),dp(108)));box.addView(TextView(this).apply{text=track.title;textSize=12f;setTextColor(Color.WHITE);maxLines=1});box.addView(TextView(this).apply{text=track.artist;textSize=11f;setTextColor(muted);maxLines=1});loadArtwork(track,art);row.addView(box,LinearLayout.LayoutParams(dp(118),-2))};content.addView(ScrollView(this).apply{isHorizontalScrollBarEnabled=false;addView(row)},LinearLayout.LayoutParams(-1,dp(158)).apply{bottomMargin=dp(18)})}
     private fun addAlbumRail(surface:Int,muted:Int){val row=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL};tracks.distinctBy{it.album}.take(8).forEach{t->val box=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(5),dp(4),dp(5),dp(6));setOnClickListener{renderCollection(t.album,tracks.filter{it.album==t.album})}};val art=ImageView(this).apply{scaleType=ImageView.ScaleType.CENTER_CROP;setImageResource(android.R.drawable.ic_menu_gallery);background=rounded(surface,14)};box.addView(art,LinearLayout.LayoutParams(dp(116),dp(116)));box.addView(TextView(this).apply{text=t.album;textSize=12f;setTextColor(Color.WHITE);maxLines=1});box.addView(TextView(this).apply{text=t.artist;textSize=11f;setTextColor(muted)});loadArtwork(t,art);row.addView(box,LinearLayout.LayoutParams(dp(126),-2))};content.addView(ScrollView(this).apply{isHorizontalScrollBarEnabled=false;addView(row)},LinearLayout.LayoutParams(-1,dp(160)).apply{bottomMargin=dp(18)})}
     private fun addArtistRail(surface:Int,muted:Int){val row=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL};tracks.distinctBy{it.artist}.take(8).forEach{t->val box=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setPadding(dp(5),dp(4),dp(5),dp(6));setOnClickListener{renderCollection(t.artist,tracks.filter{it.artist==t.artist})}};val art=ImageView(this).apply{scaleType=ImageView.ScaleType.CENTER_CROP;setImageResource(android.R.drawable.ic_menu_myplaces);background=rounded(surface,60);clipToOutline=true};box.addView(art,LinearLayout.LayoutParams(dp(96),dp(96)));box.addView(TextView(this).apply{text=t.artist;textSize=12f;setTextColor(Color.WHITE);maxLines=1;gravity=Gravity.CENTER});loadArtwork(t,art);row.addView(box,LinearLayout.LayoutParams(dp(120),-2))};content.addView(ScrollView(this).apply{isHorizontalScrollBarEnabled=false;addView(row)},LinearLayout.LayoutParams(-1,dp(140)).apply{bottomMargin=dp(18)})}
-    private fun addEmptyState(surface:Int,muted:Int){val box=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setPadding(dp(24),dp(30),dp(24),dp(30));background=rounded(surface,22)};box.addView(TextView(this).apply{text="♫";textSize=44f;setTextColor(Color.rgb(30,215,96));gravity=Gravity.CENTER});box.addView(TextView(this).apply{text="Müziğinizi keşfetmeye hazır";textSize=19f;setTextColor(Color.WHITE);typeface=Typeface.DEFAULT_BOLD;gravity=Gravity.CENTER;setPadding(0,dp(8),0,dp(6))});box.addView(TextView(this).apply{text="Cihazındaki yerel parçalar burada güvenli ve çevrimdışı listelenir.";textSize=13f;setTextColor(muted);gravity=Gravity.CENTER});content.addView(box,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(16)})}
+    private fun addEmptyState(surface:Int,muted:Int){val box=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setPadding(dp(24),dp(30),dp(24),dp(30));background=rounded(surface,22)};box.addView(TextView(this).apply{text="♫";textSize=44f;setTextColor(Color.rgb(30,215,96));gravity=Gravity.CENTER});box.addView(TextView(this).apply{text="Müziğinizi keşfetmeye hazır";textSize=19f;setTextColor(Color.WHITE);typeface=Typeface.DEFAULT_BOLD;gravity=Gravity.CENTER;setPadding(0,dp(8),0,dp(6))});box.addView(TextView(this).apply{text="Cihazındaki yerel parçalar burada güvenli ve çevrimdışı listelenir. Arama kutusundan gerçek katalogdaki şarkı ve sanatçıları da bulabilirsin.";textSize=13f;setTextColor(muted);gravity=Gravity.CENTER});content.addView(box,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=dp(16)})}
     private fun addHint(text:String,muted:Int){content.addView(TextView(this).apply{this.text=text;textSize=13f;setTextColor(muted);setPadding(dp(4),dp(6),dp(4),dp(14))})}
     private fun addBack(action:()->Unit={renderHome()}){content.addView(TextView(this).apply{text="← Ana sayfa";textSize=14f;setTextColor(Color.rgb(30,215,96));gravity=Gravity.CENTER;setPadding(0,dp(22),0,dp(16));setOnClickListener{action()}})}
     private fun sectionTitle(text:String,color:Int)=TextView(this).apply{this.text=text;textSize=20f;setTextColor(color);typeface=Typeface.DEFAULT_BOLD;setPadding(0,dp(2),0,dp(10))}
@@ -150,7 +183,7 @@ class MainActivity : AppCompatActivity() {
     private fun loadLocalState(){recentIds.addAll(readIds("recent"));favoriteIds.addAll(readIds("favorites"))}
     private fun saveLocalState(){prefs.edit().putString("recent",recentIds.joinToString(",")).putString("favorites",favoriteIds.joinToString(",")).apply()}
     private fun readIds(key:String)=prefs.getString(key,"").orEmpty().split(',').mapNotNull{it.toLongOrNull()}
-    private fun loadArtwork(track:MusicTrack,view:ImageView){view.setImageResource(android.R.drawable.ic_menu_gallery);artworkExecutor.execute{val bitmap=runCatching{AlbumArtResolver.load(this,track.uri)}.getOrNull();runOnUiThread{if(!isFinishing&&bitmap!=null)view.setImageBitmap(bitmap)}}}
+    private fun loadArtwork(track:MusicTrack,view:ImageView){view.setImageResource(android.R.drawable.ic_menu_gallery);artworkExecutor.execute{val bitmap=runCatching{if(track.albumArtUri?.startsWith("http")==true)URL(track.albumArtUri).openStream().use{BitmapFactory.decodeStream(it)}else AlbumArtResolver.load(this,track.uri)}.getOrNull();runOnUiThread{if(!isFinishing&&bitmap!=null)view.setImageBitmap(bitmap)}}}
     private fun connectPlayer(){val token=SessionToken(this,ComponentName(this,PlaybackService::class.java));val future=MediaController.Builder(this,token).buildAsync();future.addListener({runCatching{controller=future.get();controller?.addListener(playerListener);updateMiniPlayer()}.onFailure{status.text="Oynatıcı bağlantısı kurulamadı"}},ContextCompat.getMainExecutor(this))}
     private fun updateMiniPlayer(){if(!::miniTitle.isInitialized)return;val item=controller?.currentMediaItem;miniTitle.text=item?.mediaMetadata?.title?:"LANU Music";miniArtist.text=item?.mediaMetadata?.artist?:"Bir parça seç";miniPlay.text=if(controller?.isPlaying==true)"Ⅱ"else"▶"}
     private fun ensureNotificationPermission(){if(Build.VERSION.SDK_INT>=33&&ContextCompat.checkSelfPermission(this,Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)else ensureAudioPermission()}
