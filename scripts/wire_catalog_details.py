@@ -50,7 +50,7 @@ new = '''    private fun renderCatalogCollection(query:String,items:List<MusicTr
             content.addView(sectionTitle("Albüm sayfaları",Color.WHITE))
             albums.forEach{(album,artist)->
                 content.addView(Button(this).apply{
-                    text="$album\n$artist"; setTextColor(Color.WHITE); textSize=13f; gravity=Gravity.START or Gravity.CENTER_VERTICAL
+                    text="$album\\n$artist"; setTextColor(Color.WHITE); textSize=13f; gravity=Gravity.START or Gravity.CENTER_VERTICAL
                     background=rounded(surface,14); setPadding(dp(14),0,dp(14),0)
                     setOnClickListener{loadAlbumPage(album,artist){renderCatalogCollection("$album",items)}}
                 },LinearLayout.LayoutParams(-1,dp(58)).apply{bottomMargin=dp(6)})
